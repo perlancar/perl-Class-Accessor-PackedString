@@ -18,15 +18,35 @@ sub import {
     no warnings 'redefine';
 #END IFUNBUILT
 
+    my $attrs = $spec->{accessors};
+
+    # store list of accessors in the package
+    {
+#IFUNBUILT
+        no warnings 'once';
+#END IFUNBUILT
+        %{"$class\::HAS_PACKED"} = %$attrs;
+    }
+
     # generate accessors
-    for my $meth (keys %{$spec->{accessors}}) {
-        my $idx = $spec->{accessors}{$meth};
-        my $code_str = 'sub (;$) { ';
-        $code_str .= "\$_[0][$idx] = \$_[1] if \@_ > 1; ";
-        $code_str .= "\$_[0][$idx]; ";
-        $code_str .= "}";
-        #say "D:accessor code for $meth: ", $code_str;
-        *{"$class\::$meth"} = eval $code_str;
+    my %idx; # key = attribute name, value = index
+    my $pack_template = "";
+    for my $attr (sort keys %$attrs) {
+        $idx{$attr} = keys(%idx);
+        $pack_template .= $attrs->{$attr};
+    }
+    my $num_attrs = keys %$attrs;
+
+    for my $attr (keys %$attrs) {
+        my $idx = $idx{$attr};
+        my $code_str = 'sub (;$) {';
+        $code_str .= qq( my \$self = shift;);
+        $code_str .= qq( my \@attrs = unpack("$pack_template", \$\$self););
+        $code_str .= qq( if (\@_) { \$attrs[$idx] = \$_[0]; \$\$self = pack("$pack_template", \@attrs) });
+        $code_str .= qq( return \$attrs[$idx];);
+        $code_str .= " }";
+        #print "D:accessor code for $attr: ", $code_str, "\n";
+        *{"$class\::$attr"} = eval $code_str;
         die if $@;
     }
 
@@ -34,17 +54,15 @@ sub import {
     {
         my $code_str;
         $code_str  = 'sub { my ($class, %args) = @_;';
-        if (@{"$class\::ISA"}) {
-            $code_str .= ' require '.${"$class\::ISA"}[0].';';
-            $code_str .= ' my $self = '.${"$class\::ISA"}[0].'->new(map {($_=>delete $args{$_})}'.
-                ' grep {'.(join " && ", map {'$_ ne \''.$_.'\''} keys %{$spec->{accessors}}).'} keys %args);';
-            $code_str .= ' $self = bless $self, \''.$class.'\';';
-        } else {
-            $code_str .= ' my $self = bless [], $class;';
+        $code_str .= qq( no warnings 'uninitialized';);
+        $code_str .= qq( my \@attrs = map { undef } 1..$num_attrs;);
+        for my $attr (sort keys %$attrs) {
+            my $idx = $idx{$attr};
+            $code_str .= qq( if (exists \$args{'$attr'}) { \$attrs[$idx] = delete \$args{'$attr'} });
         }
-        $code_str .= ' for my $key (grep {'.(join " || ", map {'$_ eq \''.$_.'\''} keys %{$spec->{accessors}}).'} keys %args) { $self->$key(delete $args{$key}) }';
         $code_str .= ' die "Unknown $class attributes in constructor: ".join(", ", sort keys %args) if keys %args;';
-        $code_str .= ' $self }';
+        $code_str .= qq( my \$self = pack('$pack_template', \@attrs); bless \\\$self, '$class';);
+        $code_str .= ' }';
 
         #print "D:constructor code for class $class: ", $code_str, "\n";
         my $constructor = $spec->{constructor} || "new";
@@ -68,8 +86,8 @@ In F<lib/Your/Class.pm>:
  use Class::Accessor::PackedString {
      # constructor => 'new',
      accessors => {
-         foo => [0, ""],
-         bar => [1,
+         foo => "f",
+         bar => "c",
      },
  };
 
@@ -78,24 +96,26 @@ In code that uses your class:
  use Your::Class;
 
  my $obj = Your::Class->new;
- $obj->foo(1980);
- $obj->bar(12);
+ $obj->foo(1.2);
+ $obj->bar(34);
 
 or:
 
- my $obj = Your::Class->new(foo => 1, bar => 2);
+ my $obj = Your::Class->new(foo => 1.2, bar => 34);
 
 C<$obj> is now:
 
- bless([1980, 12], "Your::Class");
+ bless(do{\(my $o = pack("fc", 1.2, 34))}, "Your::Class")
 
 To subclass, in F<lib/Your/Subclass.pm>:
 
  package Your::Subclass;
- our @ISA = qw(Your::Class);
- use Class::Accessor::Array {
+ use parent 'Your::Class';
+ use Class::Accessor::PackedString {
      accessors => {
-         baz => 2,
+         %Your::Class::HAS_PACKED,
+         baz => "a8",
+         qux => "a8",
      },
  };
 
@@ -103,17 +123,15 @@ To subclass, in F<lib/Your/Subclass.pm>:
 =head1 DESCRIPTION
 
 This module is a builder for classes that use pack()-ed string as memory storage
-backend. This is useful in situations where you need to create many thousands+
-objects and want to reduce memory usage, because string-based objects are more
-space-efficient than the commonly used hash-based objects. The downside is you
-have to predeclare all the attributes of your class along with their types.
-Another downside is speed, because there needs to be unpack()-ing and
-re-pack()-ing everytime am attribute is accessed or set.
+backend. This is useful in situations where you need to create many (e.g.
+thousands+) objects in memory and want to reduce memory usage, because
+string-based objects are more space-efficient than the commonly used hash-based
+objects. The downsides are: 1) you have to predeclare all the attributes of your
+class along with their types (pack() templates); 2) you can only store data
+which can be pack()-ed; 3) slower speed, because unpack()-ing and re-pack()-ing
+are done everytime an attribute is accessed or set.
 
 
 =head1 SEE ALSO
 
-L<Class::Accessor::PackedString::Fields>
-
-Class builders for array-based objects like L<Class::Accessor::Array> and
-L<Class::Accessor::Array::Glob>.
+L<Class::Accessor::PackedString::Set>

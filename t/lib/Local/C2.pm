@@ -1,11 +1,11 @@
 package # hide from PAUSE
     Local::C2;
 
-use Class::Accessor::Array {
+use Class::Accessor::PackedString {
     constructor => 'spawn',
     accessors => {
-        foo => 0,
-        bar => 1,
+        foo => "f",
+        bar => "c",
     },
 };
 

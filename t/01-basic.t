@@ -13,37 +13,27 @@ use Local::C1;
 use Local::C2;
 use Local::C3;
 
-my $c1 = Local::C1->new;
-#is_deeply($c1, bless([undef, undef], "Local::C1"));
-
-$c1->foo(1980);
-$c1->bar(12);
-is_deeply($c1, bless([1980, 12], "Local::C1"));
-
-my $c2 = Local::C2->spawn;
-
-$c2->foo(1981);
-$c2->bar(11);
-is_deeply($c2, bless([1981, 11], "Local::C2"));
+subtest "getter & setter" => sub {
+    my $c1 = Local::C1->new;
+    $c1->foo(1.2);
+    $c1->bar(34);
+    is_deeply($c1, bless(do{\(my $o = pack("cf", 34, 1.2))}, "Local::C1"));
+    ok(abs($c1->foo - 1.2) < 1e-7);
+    is($c1->bar, 34);
+    $c1->foo(5.6);
+    $c1->bar(78);
+    ok(abs($c1->foo - 5.6) < 1e-7);
+    is($c1->bar, 78);
+};
 
 subtest "set attributes in constructor" => sub {
-    my $c1 = Local::C1->new(foo => 10, bar => 20);
-    is_deeply($c1, bless([10, 20], "Local::C1"));
-    dies_ok { Local::C1->new(qux=>1) } 'unknown attribute specified -> dies';
+    my $c2 = Local::C2->spawn(foo=>1.2, bar=>34);
+    is_deeply($c2, bless(do{\(my $o = pack("cf", 34, 1.2))}, "Local::C2"));
 };
 
 subtest "subclass" => sub {
-    my $c3 = Local::C3->new;
-    $c3->foo(1981);
-    $c3->bar(11);
-    $c3->baz("a");
-    is_deeply($c3, bless([1981, 11, "a"], "Local::C3"));
-
-    subtest "set attributes in constructor" => sub {
-        my $c3 = Local::C3->new(foo => 10, bar => 20, baz => 30);
-        is_deeply($c3, bless([10, 20, 30], "Local::C3"));
-        dies_ok { Local::C3->new(qux=>1) } 'unknown attribute specified -> dies';
-    };
+    my $c3 = Local::C3->new(foo => 1.2, bar=>34, baz=>"A");
+    is_deeply($c3, bless(do{\(my $o = pack("cA2f", 34, "A", 1.2))}, "Local::C3"));
 };
 
 done_testing;

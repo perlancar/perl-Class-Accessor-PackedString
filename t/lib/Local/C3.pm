@@ -1,11 +1,12 @@
 package # hide from PAUSE
     Local::C3;
 
-BEGIN { our @ISA = qw(Local::C1) }
+BEGIN { require Local::C1; our @ISA = qw(Local::C1) }
 
-use Class::Accessor::Array {
+use Class::Accessor::PackedString {
     accessors => {
-        baz => 2,
+        %Local::C1::HAS_PACKED,
+        baz => "A2",
     },
 };
 
